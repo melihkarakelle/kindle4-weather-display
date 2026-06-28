@@ -6,6 +6,7 @@ The Kindle fetches these with wget.
 """
 
 import os
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 BASE = os.path.dirname(__file__)
@@ -13,12 +14,23 @@ ROUTES = {
     "/weather.png": os.path.join(BASE, "kindle_weather.png"),
     "/news.png":    os.path.join(BASE, "kindle_news.png"),
 }
+BATT_FILE = os.path.join(BASE, "battery.txt")
 PORT = 8765
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        path = ROUTES.get(self.path)
+        # Path'i query'den ayir; ?batt=NN varsa pil degerini kaydet
+        raw_path = self.path
+        route_path = raw_path.split("?", 1)[0]
+        m = re.search(r"[?&]batt=(\d{1,3})", raw_path)
+        if m:
+            try:
+                with open(BATT_FILE, "w") as f:
+                    f.write(m.group(1))
+            except Exception:
+                pass
+        path = ROUTES.get(route_path)
         if path:
             try:
                 with open(path, "rb") as f:

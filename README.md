@@ -6,7 +6,10 @@ e-ink information display. A Raspberry Pi (or any always-on Linux box) generates
 the latest news headlines. The Kindle wakes up on a timer, downloads the image, draws it on
 its e-ink screen, and goes back into deep sleep — so a single charge lasts a long time.
 
-![layout](docs/screenshot.png) <!-- optional: add your own screenshot -->
+![Kindle weather display](docs/screenshot.png)
+
+*Weather, 3-day forecast, tide times and the latest headlines on one 600×800 e-ink screen,
+with a battery indicator in the top-right corner.*
 
 ## How it works
 
@@ -25,12 +28,22 @@ its e-ink screen, and goes back into deep sleep — so a single charge lasts a l
 
 1. **The Pi** runs a small script (`weather_image.py`) on a cron schedule that fetches data
    from public APIs and renders one PNG. A tiny HTTP server (`serve_image.py`) serves it.
-2. **The Kindle** runs a daemon that, on a timer, briefly turns on WiFi, downloads the PNG,
-   draws it with `eips`, turns WiFi off, sets an RTC wake alarm, and enters deep sleep
-   (`echo mem > /sys/power/state`). A cron "watchdog" restarts the daemon on boot or if it dies.
+2. **The Kindle** runs a daemon that, on a timer, briefly turns on WiFi, downloads the PNG
+   (passing its current battery level), draws it with `eips`, turns WiFi off, sets an RTC
+   wake alarm, and enters deep sleep (`echo mem > /sys/power/state`). A cron "watchdog"
+   restarts the daemon on boot or if it dies.
 
 The e-ink screen keeps showing the last image while the device sleeps, so the display is
 always populated even though the CPU is off most of the time.
+
+### Battery indicator
+
+The image is rendered on the Pi, which can't know the Kindle's battery level. So each time
+the daemon fetches the image it reads its own battery (`lipc-get-prop com.lab126.powerd
+battLevel`) and appends it to the request: `GET /weather.png?batt=85`. The server saves that
+value to `battery.txt`, and the next render draws a small battery icon (with a fill bar) and
+the percentage in the top-right corner. This way the level shown is always the Kindle's real
+charge, drawn with a proper font (the on-device `eips` text mode can't even render a `%`).
 
 ---
 
@@ -282,7 +295,7 @@ WIFI_WAIT=8              # seconds to wait after enabling WiFi
 ```
 
 What the daemon does each cycle:
-1. Turn WiFi on, wait, `wget` the PNG.
+1. Turn WiFi on, wait, read the battery level, `wget` the PNG with `?batt=NN`.
 2. `eips -c` (clear) → `sleep 2` → `eips -f -g` (full draw) → `sleep 5` (let e-ink settle).
 3. Turn WiFi off.
 4. Set RTC alarm for `INTERVAL` seconds, then `echo mem > /sys/power/state` (deep sleep).

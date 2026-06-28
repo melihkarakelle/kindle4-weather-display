@@ -212,6 +212,18 @@ def sep(draw, y, margin=20, thickness=2):
     draw.line([(margin, y), (KINDLE_W-margin, y)], fill=0, width=thickness)
 
 
+def read_battery():
+    """serve_image.py'nin yazdigi battery.txt'den pil yuzdesini okur."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "battery.txt")) as f:
+            v = int(f.read().strip())
+            if 0 < v <= 100:
+                return v
+    except Exception:
+        pass
+    return None
+
+
 def generate_image(data, tides=None, news=None):
     img  = Image.new("L", (KINDLE_W, KINDLE_H), color=255)
     draw = ImageDraw.Draw(img)
@@ -232,6 +244,30 @@ def generate_image(data, tides=None, news=None):
     draw.text((KINDLE_W//2, 24), LOCATION_LABEL, fill=0, font=fb_32, anchor="mm")
     draw.text((KINDLE_W//2, 50), now.strftime("%A, %d %B %Y  %H:%M"),
               fill=0, font=fm_20, anchor="mm")
+
+    # Pil gostergesi — sag ust kose (kucuk pil ikonu + yuzde)
+    batt = read_battery()
+    if batt is not None:
+        fm_16 = load_font(FONT_MEDIUM, 16)
+        bt = f"{batt}%"
+        # Metin sag kenara hizali
+        tb = draw.textbbox((0, 0), bt, font=fm_16)
+        tw = tb[2] - tb[0]
+        bx_right = KINDLE_W - 8
+        by = 14   # ust kenardan ~14px (2px asagi ayari icin buradan oynanir)
+        # Pil ikonu (govde + uc)
+        ico_w, ico_h = 22, 12
+        ix = bx_right - tw - 6 - ico_w
+        iy = by
+        draw.rectangle([(ix, iy), (ix + ico_w, iy + ico_h)], outline=0, width=1)
+        draw.rectangle([(ix + ico_w, iy + 3), (ix + ico_w + 2, iy + ico_h - 3)], fill=0)
+        # Doluluk cubugu
+        fill_w = int((ico_w - 3) * batt / 100.0)
+        if fill_w > 0:
+            draw.rectangle([(ix + 2, iy + 2), (ix + 2 + fill_w, iy + ico_h - 2)], fill=0)
+        # Yuzde metni ikonun sagina
+        draw.text((bx_right, by + ico_h // 2), bt, fill=0, font=fm_16, anchor="rm")
+
     sep(draw, 62)
 
     # ── CURRENT ──────────────────────────────────────────────────

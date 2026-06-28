@@ -30,3 +30,6 @@ __pycache__/
 kindle_button.sh
 kindle_display.sh
 news_image.py
+
+# Runtime battery value written by serve_image.py
+battery.txt
