@@ -1,0 +1,20 @@
+#!/bin/sh
+# Kindle Daemon Watchdog
+# Called by cron every minute. Starts the daemon if it isn't running.
+# Provides both boot persistence and crash recovery.
+
+DAEMON="/mnt/us/kindle_daemon.sh"
+LOG="/mnt/us/kindle_display.log"
+
+# Is the daemon already running? (check the PID file)
+PIDFILE="/tmp/kindle_daemon.pid"
+if [ -f "$PIDFILE" ]; then
+    PID=$(cat "$PIDFILE" 2>/dev/null)
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+        exit 0   # running, leave it alone
+    fi
+fi
+
+# Not running -> start it
+echo "$(date '+%Y-%m-%d %H:%M:%S') [watchdog] daemon was not running, starting" >> "$LOG"
+/bin/sh "$DAEMON" >> /mnt/us/daemon_debug.log 2>&1 &

@@ -1,0 +1,100 @@
+#!/bin/sh
+# Ignore SIGHUP so the daemon survives its launcher exiting
+# (Kindle BusyBox has no setsid/nohup)
+trap '' HUP
+
+# Kindle Display Daemon — suspend + RTC wake loop (battery friendly)
+# Started by the watchdog at boot. Each cycle:
+#   1) WiFi on, download image, draw to e-ink, WiFi off
+#   2) Set RTC alarm (INTERVAL seconds from now)
+#   3) Deep sleep (echo mem > /sys/power/state)
+#   4) RTC wakes the device, loop again
+# The e-ink screen keeps the last image while asleep; the OS sleep image is suppressed.
+
+# ── CONFIG ───────────────────────────────────────────────────────
+PI_IP="192.168.X.X"        # your image server's IP
+PI_PORT="8765"
+INTERVAL=1800              # seconds between updates (1800 = 30 min)
+WIFI_WAIT=8                # seconds to wait after enabling WiFi
+# ─────────────────────────────────────────────────────────────────
+
+IMG_URL="http://${PI_IP}:${PI_PORT}/weather.png"
+TMP_IMG="/tmp/weather.png"
+LOG="/mnt/us/kindle_display.log"
+RTC="/sys/class/rtc/rtc1/wakealarm"
+
+EIPS="/usr/sbin/eips"
+LIPC="/usr/bin/lipc-set-prop"
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"; }
+
+update_screen() {
+    $LIPC com.lab126.wifid enable 1 2>/dev/null
+    sleep "$WIFI_WAIT"
+    rm -f "$TMP_IMG"
+    if wget -q -O "$TMP_IMG" "$IMG_URL"; then
+        log "Downloaded"
+        $LIPC com.lab126.wifid enable 0 2>/dev/null
+        # Clear, let e-ink settle
+        $EIPS -c
+        sleep 2
+        # Full refresh draw (no ghosting)
+        $EIPS -f -g "$TMP_IMG"
+        # Let the e-ink write finish before suspending (REQUIRED!)
+        sleep 5
+        log "Drawn to screen"
+        rm -f "$TMP_IMG"
+    else
+        log "ERROR: download failed"
+        $LIPC com.lab126.wifid enable 0 2>/dev/null
+    fi
+}
+
+suspend_for() {
+    # Wake via RTC after $1 seconds, then deep sleep
+    echo 0 > "$RTC" 2>/dev/null
+    NOW=$(cat /sys/class/rtc/rtc1/since_epoch)
+    echo $((NOW + $1)) > "$RTC" 2>/dev/null
+    sync
+    log "Suspend (${1}s RTC alarm)"
+    BEFORE=$(cat /sys/class/rtc/rtc1/since_epoch)
+    echo mem > /sys/power/state
+    AFTER=$(cat /sys/class/rtc/rtc1/since_epoch)
+    SLEPT=$((AFTER - BEFORE))
+    log "Resume (slept ${SLEPT}s)"
+    # If suspend failed (too short), fall back to a normal sleep to protect the battery
+    if [ "$SLEPT" -lt 5 ]; then
+        log "WARN: suspend failed, falling back to sleep"
+        sleep "$1"
+    fi
+}
+
+# Single-instance guard via PID file
+PIDFILE="/tmp/kindle_daemon.pid"
+if [ -f "$PIDFILE" ]; then
+    OLD=$(cat "$PIDFILE" 2>/dev/null)
+    if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null; then
+        log "Daemon already running (PID=$OLD), exiting"
+        exit 0
+    fi
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
+
+log "=== Daemon started (PID=$$) ==="
+# Stop the Kindle UI from drawing its own screensaver/suspend; we take control
+$LIPC com.lab126.powerd preventScreenSaver 1 2>/dev/null
+
+# FIRST BOOT: update the screen, then stay awake 2 minutes (maintenance window)
+# so you can SSH in and make changes before the device starts sleeping.
+update_screen
+log "First boot: staying awake 120s (maintenance window)"
+sleep 120
+log "Maintenance window over, entering normal loop"
+
+while true; do
+    suspend_for "$INTERVAL"
+    # Brief settle time after resume
+    sleep 3
+    update_screen
+done

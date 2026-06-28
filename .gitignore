@@ -1,0 +1,32 @@
+# Private notes with personal IPs/passwords/serials — NEVER publish
+CLAUDE.md
+.claude/
+
+# Jailbreak/USBNetwork community packages (download from MobileRead, see README)
+jailbreak/
+
+# Personal/runtime versions of the Kindle scripts (copy from *.example and edit)
+kindle_daemon.sh
+kindle_watchdog.sh
+
+# Generated images
+kindle_weather.png
+kindle_news.png
+
+# Logs
+*.log
+
+# Fonts downloaded at setup (see README)
+weathericons.ttf
+
+# Python
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store
+
+# Old experiments (not part of the documented build)
+kindle_button.sh
+kindle_display.sh
+news_image.py
