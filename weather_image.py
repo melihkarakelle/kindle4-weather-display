@@ -241,8 +241,10 @@ def generate_image(data, tides=None, news=None):
     fb_88  = load_font(FONT_BOLD,   88)
 
     # ── HEADER ───────────────────────────────────────────────────
-    draw.text((KINDLE_W//2, 24), LOCATION_LABEL, fill=0, font=fb_32, anchor="mm")
-    draw.text((KINDLE_W//2, 50), now.strftime("%A, %d %B %Y  %H:%M"),
+    # Ust: tarih (buyuk bold), alt: konum (kucuk)
+    draw.text((KINDLE_W//2, 24), now.strftime("%A, %d %B %Y"),
+              fill=0, font=fb_32, anchor="mm")
+    draw.text((KINDLE_W//2, 50), LOCATION_LABEL,
               fill=0, font=fm_20, anchor="mm")
 
     # Pil gostergesi — sag ust kose (kucuk pil ikonu + yuzde)
@@ -267,6 +269,10 @@ def generate_image(data, tides=None, news=None):
             draw.rectangle([(ix + 2, iy + 2), (ix + 2 + fill_w, iy + ico_h - 2)], fill=0)
         # Yuzde metni ikonun sagina
         draw.text((bx_right, by + ico_h // 2), bt, fill=0, font=fm_16, anchor="rm")
+
+    # Refresh saati — konum yazisi ile ayni yatay hizada (y=50), ayni font, sag kose
+    draw.text((KINDLE_W - 20, 50), now.strftime("%H:%M"),
+              fill=0, font=fm_20, anchor="rm")
 
     sep(draw, 62)
 
