@@ -85,16 +85,11 @@ log "=== Daemon started (PID=$$) ==="
 # Stop the Kindle UI from drawing its own screensaver/suspend; we take control
 $LIPC com.lab126.powerd preventScreenSaver 1 2>/dev/null
 
-# FIRST BOOT: update the screen, then stay awake 2 minutes (maintenance window)
-# so you can SSH in and make changes before the device starts sleeping.
-update_screen
-log "First boot: staying awake 120s (maintenance window)"
-sleep 120
-log "Maintenance window over, entering normal loop"
-
+# Draw the image and go straight into the suspend loop (no maintenance window).
+# To make changes, reboot and grab the short window after boot before the first suspend.
 while true; do
+    update_screen
     suspend_for "$INTERVAL"
     # Brief settle time after resume
     sleep 3
-    update_screen
 done

@@ -301,9 +301,10 @@ What the daemon does each cycle:
 4. Set RTC alarm for `INTERVAL` seconds, then `echo mem > /sys/power/state` (deep sleep).
 5. On wake, repeat.
 
-It also keeps a **single-instance lock** (`/tmp/kindle_daemon.pid`) and, on first start,
-stays awake for **120 seconds** before the first suspend — a maintenance window so you can
-SSH in and make changes before the device starts disappearing into sleep.
+It also keeps a **single-instance lock** (`/tmp/kindle_daemon.pid`) so the watchdog never
+starts a second copy. Because the device sleeps most of the time, the practical way to make
+changes is to **reboot** and grab the short window after boot (before the daemon's first
+suspend) to SSH in.
 
 ### Install the watchdog in cron
 
@@ -363,8 +364,9 @@ the shebang is `trap '' HUP`.
 
 **Can't SSH in — device "disappears."**
 It's asleep most of the time by design. SSH only works during a wake window. Either wait
-for the next cycle, use the 120 s first-boot maintenance window, or wake it from the
-device (power button, then exit the menu). Remember to test port 22, not ping.
+for the next cycle, **reboot and grab the short window after boot** (before the first
+suspend), or wake it from the device (power button, then exit the menu). Remember to test
+port 22, not ping.
 
 **`wget: Network unreachable`.**
 WiFi wasn't ready. Keep the `sleep 8` after enabling WiFi. Also confirm the Kindle and the
