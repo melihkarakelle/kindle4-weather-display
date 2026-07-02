@@ -311,6 +311,7 @@ def generate_image(data, tides=None, todoist=None):
     desc     = current["weatherDesc"][0]["value"]
     t_max    = weather[0]["maxtempC"]
     t_min    = weather[0]["mintempC"]
+    t_rain   = weather[0]["hourly"][4]["chanceofrain"]
     sunrise  = weather[0]["astronomy"][0]["sunrise"]
     sunset   = weather[0]["astronomy"][0]["sunset"]
     icon_t   = WTTR_CODES.get(wcode, ("?","sun"))[1]
@@ -329,17 +330,20 @@ def generate_image(data, tides=None, todoist=None):
     draw_icon(draw, icon_t, 72, 174, size=54)
 
     # Hi / Lo — ikonun sağında
-    draw.text((168, 158), f"{t_max}°", fill=0, font=fb_36, anchor="mm")
-    draw.text((168, 196), f"{t_min}°", fill=0, font=fb_36, anchor="mm")
+    draw.text((150, 158), f"{t_max}°", fill=0, font=fb_36, anchor="mm")
+    draw.text((150, 196), f"{t_min}°", fill=0, font=fb_36, anchor="mm")
+
+    # Yağmur ihtimali — max/min'in sağında, damla ikonu + %
+    _draw_raindrop(draw, 210, 176, size=15)
+    draw.text((226, 178), f"{t_rain}%", fill=0, font=fb_24, anchor="lm")
 
     # Sağ kolon — detaylar, hepsi bold ve büyük
     desc_font = fb_24 if len(desc) > 14 else fb_28
-    draw.text((RIGHT_CX,  77), desc,                               fill=0, font=desc_font, anchor="mm")
-    draw.text((RIGHT_CX, 104), f"Feels {feels_c}°C",               fill=0, font=fb_24, anchor="mm")
-    draw.text((RIGHT_CX, 132), f"Humidity {humidity}%",             fill=0, font=fb_24, anchor="mm")
-    draw.text((RIGHT_CX, 160), f"Wind {wind_mph} mph {wind_dir}",   fill=0, font=fb_24, anchor="mm")
-    draw.text((RIGHT_CX, 188), f"Rise {sunrise}  Set {sunset}",     fill=0, font=fm_20, anchor="mm")
-    draw.text((RIGHT_CX, 212), f"Pressure {pressure} hPa",          fill=0, font=fm_20, anchor="mm")
+    draw.text((RIGHT_CX,  80), desc,                               fill=0, font=desc_font, anchor="mm")
+    draw.text((RIGHT_CX, 110), f"Feels {feels_c}°C",               fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX, 138), f"Humidity {humidity}%",             fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX, 166), f"Wind {wind_mph} mph {wind_dir}",   fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX, 194), f"Rise {sunrise}  Set {sunset}",     fill=0, font=fb_24, anchor="mm")
 
     sep(draw, 228)
 
@@ -347,11 +351,16 @@ def generate_image(data, tides=None, todoist=None):
     FORE_TOP = 228
 
     col_w3 = KINDLE_W // 3
-    try:
-        d2 = datetime.strptime(weather[2]["date"], "%Y-%m-%d").strftime("%A")
-    except Exception:
-        d2 = "Day 3"
-    dy_names = ["Today", "Tomorrow", d2]
+    # Gun adlari: ilk sutun "Today", sonrakiler gercek gun adi (tekrar olmasin)
+    dy_names = []
+    for i, day in enumerate(weather[:3]):
+        if i == 0:
+            dy_names.append("Today")
+        else:
+            try:
+                dy_names.append(datetime.strptime(day["date"], "%Y-%m-%d").strftime("%A"))
+            except Exception:
+                dy_names.append("")
 
     for i, day in enumerate(weather[:3]):
         cx      = col_w3 * i + col_w3 // 2
@@ -391,33 +400,23 @@ def generate_image(data, tides=None, todoist=None):
               fill=0, font=fb_28, anchor="mm")
 
     if tides:
-        # Maksimum 4 gelgit göster, eşit aralıklı sütunlar
+        # Maksimum 4 gelgit göster, eşit aralıklı sütunlar (oksuz, kompakt)
         n = min(len(tides), 4)
         col_w = KINDLE_W // n
         for i, (hilo, t, h) in enumerate(tides[:n]):
             tcx = col_w * i + col_w // 2
             label = "HIGH" if hilo == "High" else "LOW"
-            label_font = fb_24
-            # Dalga ikonu: HIGH için yukarı üçgen, LOW için aşağı üçgen
-            arrow_y = TIDE_TOP + 56
-            aw = 20
-            if hilo == "High":
-                draw.polygon([(tcx, arrow_y - aw), (tcx - aw, arrow_y + aw//2),
-                               (tcx + aw, arrow_y + aw//2)], fill=0)
-            else:
-                draw.polygon([(tcx, arrow_y + aw), (tcx - aw, arrow_y - aw//2),
-                               (tcx + aw, arrow_y - aw//2)], fill=0)
-            draw.text((tcx, TIDE_TOP + 90), label, fill=0, font=label_font, anchor="mm")
-            draw.text((tcx, TIDE_TOP + 118), t, fill=0, font=fb_28, anchor="mm")
-            draw.text((tcx, TIDE_TOP + 144), f"{h}m", fill=0, font=fm_22, anchor="mm")
+            draw.text((tcx, TIDE_TOP + 46), label, fill=0, font=fb_24, anchor="mm")
+            draw.text((tcx, TIDE_TOP + 74), t,     fill=0, font=fb_28, anchor="mm")
+            draw.text((tcx, TIDE_TOP + 98), f"{h}m", fill=0, font=fm_20, anchor="mm")
             if i < n - 1:
-                draw.line([(col_w*(i+1), TIDE_TOP+44), (col_w*(i+1), TIDE_TOP+160)],
+                draw.line([(col_w*(i+1), TIDE_TOP+34), (col_w*(i+1), TIDE_TOP+110)],
                           fill=0, width=1)
     else:
-        draw.text((KINDLE_W//2, TIDE_TOP + 100), "Tide data unavailable",
+        draw.text((KINDLE_W//2, TIDE_TOP + 70), "Tide data unavailable",
                   fill=100, font=fm_20, anchor="mm")
 
-    TIDE_BOT = TIDE_TOP + 170
+    TIDE_BOT = TIDE_TOP + 118
     sep(draw, TIDE_BOT)
 
     # ── TODOIST INBOX (alt bosluk) ───────────────────────────────
