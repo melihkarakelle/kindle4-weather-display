@@ -24,8 +24,11 @@ LOCATION_LABEL = "Sturry, Canterbury UK"     # printed at the top of the screen
 TIDE_RSS   = "https://www.tidetimes.co.uk/rss/herne-bay-tide-times"
 TIDE_LABEL = "Herne Bay — Tide Times"
 
-# News RSS feed
-BBC_RSS = "https://feeds.bbci.co.uk/news/rss.xml"
+# Bottom panel: Todoist Inbox tasks.
+# Put your API token (Todoist -> Settings -> Integrations -> Developer) in
+# a file named todoist_token.txt next to this script (git-ignored). Leave
+# the file absent to disable the panel.
+TODOIST_TOKEN_FILE = os.path.join(os.path.dirname(__file__), "todoist_token.txt")
 # ─────────────────────────────────────────────────────────────────────
 
 KINDLE_W, KINDLE_H = 600, 800
@@ -168,19 +171,40 @@ def fetch_tides():
     return tides  # [("Low","05:14","1.15"), ("High","11:37","4.63"), ...]
 
 
-def fetch_top_news(count=2):
-    """BBC News RSS'den en son haber basliklarini ceker."""
-    r = requests.get(BBC_RSS, timeout=12, headers={"User-Agent": "kindle-display/1.0"})
-    r.raise_for_status()
-    items = re.findall(r'<item>(.*?)</item>', r.text, re.DOTALL)
-    out = []
-    for it in items:
-        tm = re.search(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', it, re.DOTALL)
-        if tm:
-            out.append(html.unescape(tm.group(1).strip()))
-        if len(out) >= count:
-            break
-    return out
+def _todoist_token():
+    """todoist_token.txt'den API token'ini okur (yoksa None)."""
+    try:
+        with open(TODOIST_TOKEN_FILE) as f:
+            t = f.read().strip()
+            return t or None
+    except Exception:
+        return None
+
+
+def fetch_todoist_inbox():
+    """Todoist Inbox'taki bekleyen gorevleri ceker.
+    Doner: (toplam_sayi, [ilk birkac gorev basligi])"""
+    token = _todoist_token()
+    if not token:
+        return (0, [])
+    hdr = {"Authorization": f"Bearer {token}"}
+    base = "https://api.todoist.com/api/v1"
+    # Inbox project_id'yi bul
+    pr = requests.get(f"{base}/projects", headers=hdr, timeout=12)
+    pr.raise_for_status()
+    pdata = pr.json()
+    projs = pdata.get("results", pdata) if isinstance(pdata, dict) else pdata
+    inbox_id = next((p["id"] for p in projs
+                     if p.get("is_inbox_project") or p.get("name") == "Inbox"), None)
+    # Gorevleri cek
+    tr = requests.get(f"{base}/tasks", headers=hdr, timeout=12)
+    tr.raise_for_status()
+    tdata = tr.json()
+    tasks = tdata.get("results", []) if isinstance(tdata, dict) else tdata
+    inbox = [t for t in tasks
+             if t.get("project_id") == inbox_id and not t.get("checked")]
+    titles = [t.get("content", "").strip() for t in inbox]
+    return (len(inbox), titles)
 
 
 def load_font(path, size):
@@ -224,7 +248,7 @@ def read_battery():
     return None
 
 
-def generate_image(data, tides=None, news=None):
+def generate_image(data, tides=None, todoist=None):
     img  = Image.new("L", (KINDLE_W, KINDLE_H), color=255)
     draw = ImageDraw.Draw(img)
 
@@ -396,31 +420,42 @@ def generate_image(data, tides=None, news=None):
     TIDE_BOT = TIDE_TOP + 170
     sep(draw, TIDE_BOT)
 
-    # ── BREAKING NEWS (alt bosluk) ───────────────────────────────
-    NEWS_TOP = TIDE_BOT
+    # ── TODOIST INBOX (alt bosluk) ───────────────────────────────
+    TODO_TOP = TIDE_BOT
     margin   = 24
-    # Baslik satiri: ikon + "BBC NEWS"
-    draw.text((KINDLE_W//2, NEWS_TOP + 22), "BBC NEWS", fill=0, font=fb_28, anchor="mm")
+    total, titles = todoist if todoist else (0, [])
 
-    if news:
-        ny = NEWS_TOP + 50
-        max_w = KINDLE_W - 2 * margin - 40
-        for idx, headline in enumerate(news[:2]):
-            # Numara dairesi
-            draw.ellipse([(margin, ny), (margin + 34, ny + 34)], fill=0)
-            draw.text((margin + 17, ny + 17), str(idx+1), fill=255, font=fm_22, anchor="mm")
-            # Baslik — bold, sarmali (max 2 satir)
-            text_left = margin + 48
-            lines = wrap_text(draw, headline, fb_24, KINDLE_W - text_left - margin)
-            ty = ny + 2
-            for line in lines[:2]:
-                draw.text((text_left, ty), line, fill=0, font=fb_24, anchor="lm")
-                ty += 30
-            ny = ty + 14
+    # Baslik: "Todoist Inbox — N pending"
+    if total > 0:
+        head = f"Inbox — {total} pending"
+    else:
+        head = "Inbox"
+    draw.text((KINDLE_W//2, TODO_TOP + 22), head, fill=0, font=fb_28, anchor="mm")
+
+    if titles:
+        ny = TODO_TOP + 50
+        for idx, task in enumerate(titles[:4]):
+            # Onay kutusu (bos)
+            box = 26
+            by0 = ny
+            draw.rectangle([(margin, by0), (margin + box, by0 + box)], outline=0, width=2)
+            # Gorev basligi — bold, tek satira sigacak sekilde kirp
+            text_left = margin + box + 14
+            avail = KINDLE_W - text_left - margin
+            line = task
+            while draw.textbbox((0, 0), line, font=fb_24)[2] > avail and len(line) > 4:
+                line = line[:-2]
+            if line != task:
+                line = line.rstrip() + "…"
+            draw.text((text_left, by0 + box // 2), line, fill=0, font=fb_24, anchor="lm")
+            ny += box + 14
             if ny > KINDLE_H - 30:
                 break
+    elif total == 0:
+        draw.text((KINDLE_W//2, TODO_TOP + 90), "Inbox is empty",
+                  fill=100, font=fm_20, anchor="mm")
     else:
-        draw.text((KINDLE_W//2, NEWS_TOP + 80), "News unavailable",
+        draw.text((KINDLE_W//2, TODO_TOP + 90), "Todoist unavailable",
                   fill=100, font=fm_20, anchor="mm")
 
     img_bw = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG).convert("L")
@@ -443,15 +478,16 @@ def main():
         print(f"Tides: {tides}")
     except Exception as e:
         print(f"Tide fetch failed (non-fatal): {e}", file=sys.stderr)
-    print("Fetching BBC News...")
-    news = []
+    print("Fetching Todoist Inbox...")
+    todoist = (0, [])
     try:
-        news = fetch_top_news(2)
-        for h in news:
-            print(" -", h)
+        todoist = fetch_todoist_inbox()
+        print(f"Inbox: {todoist[0]} pending")
+        for t in todoist[1][:4]:
+            print(" -", t)
     except Exception as e:
-        print(f"News fetch failed (non-fatal): {e}", file=sys.stderr)
-    generate_image(data, tides, news)
+        print(f"Todoist fetch failed (non-fatal): {e}", file=sys.stderr)
+    generate_image(data, tides, todoist)
 
 
 if __name__ == "__main__":

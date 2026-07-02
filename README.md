@@ -3,13 +3,14 @@
 Turn an old **Kindle 4 Non-Touch (firmware 4.1.4)** into a battery-friendly, WiFi-connected
 e-ink information display. A Raspberry Pi (or any always-on Linux box) generates a single
 600×800 black-and-white PNG containing the local weather, a 3-day forecast, tide times and
-the latest news headlines. The Kindle wakes up on a timer, downloads the image, draws it on
+your Todoist Inbox tasks. The Kindle wakes up on a timer, downloads the image, draws it on
 its e-ink screen, and goes back into deep sleep — so a single charge lasts a long time.
 
 ![Kindle weather display](docs/screenshot.png)
 
-*Weather, 3-day forecast, tide times and the latest headlines on one 600×800 e-ink screen,
-with a battery indicator in the top-right corner.*
+*Weather, 3-day forecast, tide times and a configurable bottom panel on one 600×800 e-ink
+screen, with a battery indicator in the top-right corner. (The screenshot shows an RSS news
+panel; the current code ships with a Todoist Inbox panel instead — see below.)*
 
 ## How it works
 
@@ -202,15 +203,25 @@ LOCATION_LABEL = "Your Town, Country"            # printed on screen
 TIDE_RSS   = "https://www.tidetimes.co.uk/rss/your-port-tide-times"  # "" to disable
 TIDE_LABEL = "Your Port — Tide Times"
 
-BBC_RSS    = "https://feeds.bbci.co.uk/news/rss.xml"
+# Todoist token is read from todoist_token.txt (see below), not set here.
 ```
 
-Data sources used (all free, no API key):
-- **Weather:** [wttr.in](https://wttr.in) JSON (`https://wttr.in/<location>?format=j1`)
-- **Tides:** a tidetimes.co.uk RSS feed (the script parses the second `<description>`
-  block and HTML-unescapes it). Use your nearest port's feed, or set `TIDE_RSS = ""`
-  to hide the tide section.
-- **News:** any RSS feed (`<item><title>` is parsed).
+The bottom panel shows your **Todoist Inbox** — the number of pending tasks and the first
+few of them. To enable it, get an API token from **Todoist → Settings → Integrations →
+Developer**, and save it to a file next to the script:
+
+```bash
+echo "YOUR_TODOIST_API_TOKEN" > todoist_token.txt
+chmod 600 todoist_token.txt      # git-ignored; never commit this
+```
+
+If the file is absent, the panel simply shows nothing.
+
+Data sources used (all free):
+- **Weather:** [wttr.in](https://wttr.in) JSON (`https://wttr.in/<location>?format=j1`), no key.
+- **Tides:** a tidetimes.co.uk RSS feed (parses the second `<description>` block and
+  HTML-unescapes it). Use your nearest port's feed, or set `TIDE_RSS = ""` to hide it.
+- **Tasks:** [Todoist API v1](https://developer.todoist.com/) (`/api/v1/tasks`), Bearer token.
 
 ### Get the weather icon font
 
@@ -337,7 +348,7 @@ You should see the weather image appear within a few seconds.
 
 | File | Where | Purpose |
 |------|-------|---------|
-| `weather_image.py` | Pi | Fetch weather/tide/news, render `kindle_weather.png` |
+| `weather_image.py` | Pi | Fetch weather/tide/Todoist, render `kindle_weather.png` |
 | `serve_image.py` | Pi | HTTP server on `:8765`, serves the PNG, logs access |
 | `weathericons.ttf` | Pi | Weather glyph font (erikflowers/weather-icons) |
 | `kindle_daemon.sh` | Kindle `/mnt/us/` | Main download → draw → suspend loop |

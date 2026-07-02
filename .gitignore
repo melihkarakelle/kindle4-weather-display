@@ -33,3 +33,6 @@ news_image.py
 
 # Runtime battery value written by serve_image.py
 battery.txt
+
+# Todoist API token — NEVER publish
+todoist_token.txt
