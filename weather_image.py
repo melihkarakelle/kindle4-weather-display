@@ -324,31 +324,22 @@ def generate_image(data, tides=None, todoist=None):
     fb_36 = load_font(FONT_BOLD, 36)
 
     # Büyük sıcaklık
-    draw.text((LEFT_CX, 112), f"{temp_c}°C", fill=0, font=fb_72, anchor="mm")
+    draw.text((LEFT_CX, 108), f"{temp_c}°C", fill=0, font=fb_72, anchor="mm")
 
-    # İkon — sıcaklığın altında, büyük
-    draw_icon(draw, icon_t, 72, 174, size=54)
-
-    # Hi / Lo — ikonun sağında
-    draw.text((150, 158), f"{t_max}°", fill=0, font=fb_36, anchor="mm")
-    draw.text((150, 196), f"{t_min}°", fill=0, font=fb_36, anchor="mm")
-
-    # Yağmur ihtimali — max/min'in sağında, damla ikonu + %
-    _draw_raindrop(draw, 210, 176, size=15)
-    draw.text((226, 178), f"{t_rain}%", fill=0, font=fb_24, anchor="lm")
+    # İkon + hava durumu aciklamasi (Clear vb.) — sicakligin altinda yan yana
+    draw_icon(draw, icon_t, 70, 168, size=52)
+    draw.text((110, 168), desc, fill=0, font=fb_24, anchor="lm")
 
     # Sağ kolon — detaylar, hepsi bold ve büyük
-    desc_font = fb_24 if len(desc) > 14 else fb_28
-    draw.text((RIGHT_CX,  80), desc,                               fill=0, font=desc_font, anchor="mm")
-    draw.text((RIGHT_CX, 110), f"Feels {feels_c}°C",               fill=0, font=fb_24, anchor="mm")
-    draw.text((RIGHT_CX, 138), f"Humidity {humidity}%",             fill=0, font=fb_24, anchor="mm")
-    draw.text((RIGHT_CX, 166), f"Wind {wind_mph} mph {wind_dir}",   fill=0, font=fb_24, anchor="mm")
-    draw.text((RIGHT_CX, 194), f"Rise {sunrise}  Set {sunset}",     fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX,  84), f"Feels {feels_c}°C",               fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX, 114), f"Humidity {humidity}%",             fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX, 144), f"Wind {wind_mph} mph {wind_dir}",   fill=0, font=fb_24, anchor="mm")
+    draw.text((RIGHT_CX, 174), f"Rise {sunrise}  Set {sunset}",     fill=0, font=fb_24, anchor="mm")
 
-    sep(draw, 228)
+    sep(draw, 200)
 
     # ── 3-DAY FORECAST ───────────────────────────────────────────
-    FORE_TOP = 228
+    FORE_TOP = 200
 
     col_w3 = KINDLE_W // 3
     # Gun adlari: ilk sutun "Today", sonrakiler gercek gun adi (tekrar olmasin)
@@ -372,26 +363,22 @@ def generate_image(data, tides=None, todoist=None):
         d_desc  = day["hourly"][4]["weatherDesc"][0]["value"]
 
         # Gün adı
-        draw.text((cx, FORE_TOP + 22), dy_names[i], fill=0, font=fb_24, anchor="mm")
-        # İkon
-        draw_icon(draw, d_itype, cx, FORE_TOP + 58, size=34)
-        # Açıklama — büyük bold
-        d_desc_font = fm_18 if len(d_desc) > 12 else fb_24
-        draw.text((cx, FORE_TOP + 92), d_desc, fill=0, font=d_desc_font, anchor="mm")
+        draw.text((cx, FORE_TOP + 20), dy_names[i], fill=0, font=fb_24, anchor="mm")
+        # İkon (desc satiri kaldirildi, ikon yeterli)
+        draw_icon(draw, d_itype, cx, FORE_TOP + 54, size=34)
         # Sıcaklık — büyük bold tek satır
-        draw.text((cx, FORE_TOP + 122), f"{d_max}° / {d_min}°", fill=0, font=fb_28, anchor="mm")
+        draw.text((cx, FORE_TOP + 88), f"{d_max}° / {d_min}°", fill=0, font=fb_28, anchor="mm")
         # Yağmur — küçük damla + büyük bold yazı
-        drop_size = 14
         drop_x = cx - 30
-        drop_y = FORE_TOP + 150
-        _draw_raindrop(draw, drop_x, drop_y, size=drop_size)
-        draw.text((cx + 10, FORE_TOP + 150), f"{d_rain}%", fill=0, font=fb_28, anchor="mm")
+        drop_y = FORE_TOP + 116
+        _draw_raindrop(draw, drop_x, drop_y, size=14)
+        draw.text((cx + 10, FORE_TOP + 116), f"{d_rain}%", fill=0, font=fb_28, anchor="mm")
 
         if i < 2:
-            draw.line([(col_w3*(i+1), FORE_TOP + 10),(col_w3*(i+1), FORE_TOP + 172)],
+            draw.line([(col_w3*(i+1), FORE_TOP + 8),(col_w3*(i+1), FORE_TOP + 136)],
                       fill=0, width=1)
 
-    FORE_BOT = FORE_TOP + 180
+    FORE_BOT = FORE_TOP + 144
     sep(draw, FORE_BOT)
 
     # ── TIDE TIMES ───────────────────────────────────────────────
@@ -433,7 +420,7 @@ def generate_image(data, tides=None, todoist=None):
 
     if titles:
         ny = TODO_TOP + 50
-        for idx, task in enumerate(titles[:4]):
+        for idx, task in enumerate(titles[:5]):
             # Onay kutusu (bos)
             box = 26
             by0 = ny
