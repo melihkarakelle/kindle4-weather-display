@@ -420,7 +420,7 @@ def generate_image(data, tides=None, todoist=None):
 
     if titles:
         ny = TODO_TOP + 50
-        for idx, task in enumerate(titles[:5]):
+        for idx, task in enumerate(titles[:8]):
             # Onay kutusu (bos)
             box = 26
             by0 = ny
@@ -435,7 +435,7 @@ def generate_image(data, tides=None, todoist=None):
                 line = line.rstrip() + "…"
             draw.text((text_left, by0 + box // 2), line, fill=0, font=fb_24, anchor="lm")
             ny += box + 14
-            if ny > KINDLE_H - 30:
+            if ny > KINDLE_H - 24:
                 break
     elif total == 0:
         draw.text((KINDLE_W//2, TODO_TOP + 90), "Inbox is empty",
