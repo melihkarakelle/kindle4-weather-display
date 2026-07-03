@@ -13,6 +13,7 @@ BASE = os.path.dirname(__file__)
 ROUTES = {
     "/weather.png": os.path.join(BASE, "kindle_weather.png"),
     "/news.png":    os.path.join(BASE, "kindle_news.png"),
+    "/todoist.png": os.path.join(BASE, "kindle_todoist.png"),
 }
 BATT_FILE = os.path.join(BASE, "battery.txt")
 PORT = 8765
@@ -20,13 +21,18 @@ PORT = 8765
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Path'i query'den ayir; ?batt=NN varsa pil degerini kaydet
+        # Path'i query'den ayir; ?batt=NN varsa pil degerini endpoint'e gore ayri dosyaya kaydet
         raw_path = self.path
         route_path = raw_path.split("?", 1)[0]
         m = re.search(r"[?&]batt=(\d{1,3})", raw_path)
         if m:
+            # /todoist.png -> battery_todoist.txt, digerleri -> battery.txt
+            if route_path == "/todoist.png":
+                bfile = os.path.join(BASE, "battery_todoist.txt")
+            else:
+                bfile = BATT_FILE
             try:
-                with open(BATT_FILE, "w") as f:
+                with open(bfile, "w") as f:
                     f.write(m.group(1))
             except Exception:
                 pass

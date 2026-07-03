@@ -349,13 +349,28 @@ You should see the weather image appear within a few seconds.
 | File | Where | Purpose |
 |------|-------|---------|
 | `weather_image.py` | Pi | Fetch weather/tide/Todoist, render `kindle_weather.png` |
-| `serve_image.py` | Pi | HTTP server on `:8765`, serves the PNG, logs access |
+| `todoist_image.py` | Pi | Render the full Todoist Inbox to `kindle_todoist.png` (see below) |
+| `serve_image.py` | Pi | HTTP server on `:8765`, serves the PNGs, logs access |
 | `weathericons.ttf` | Pi | Weather glyph font (erikflowers/weather-icons) |
 | `kindle_daemon.sh` | Kindle `/mnt/us/` | Main download → draw → suspend loop |
 | `kindle_watchdog.sh` | Kindle `/mnt/us/` | Cron-driven boot/crash restart |
 
 Logs on the Kindle: `/mnt/us/kindle_display.log` (events),
 `/mnt/us/daemon_debug.log` (stdout/stderr).
+
+### Second screen: a Todoist-only display
+
+You can drive a **second Kindle** that shows just your Todoist Inbox, full-screen.
+`todoist_image.py` renders `kindle_todoist.png` (served at `/todoist.png`), with the
+render time in the top-left and the device's battery in the top-right. Set it up like the
+main screen, with two changes:
+
+- On the Pi, also run `todoist_image.py` from cron and let `serve_image.py` serve
+  `/todoist.png` (it already routes `?batt=` for this endpoint to its own battery file).
+- On the second Kindle, use the same `kindle_daemon.sh` but point `IMG_URL` at
+  `/todoist.png` instead of `/weather.png`.
+
+Both Kindles share one Pi and one `todoist_token.txt`; each keeps its own battery value.
 
 ---
 
