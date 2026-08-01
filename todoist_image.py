@@ -31,6 +31,10 @@ _FONT_MEDIUM_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/Library/Fonts/Arial.ttf",
 ]
+_FONT_AWESOME_CANDIDATES = [
+    os.path.join(os.path.dirname(__file__), "fa-solid.ttf"),
+    "/usr/share/fonts/truetype/fa-solid.ttf",
+]
 
 def _first_existing(paths):
     for p in paths:
@@ -38,8 +42,18 @@ def _first_existing(paths):
             return p
     return None
 
-FONT_BOLD   = _first_existing(_FONT_BOLD_CANDIDATES)
-FONT_MEDIUM = _first_existing(_FONT_MEDIUM_CANDIDATES)
+FONT_BOLD    = _first_existing(_FONT_BOLD_CANDIDATES)
+FONT_MEDIUM  = _first_existing(_FONT_MEDIUM_CANDIDATES)
+FONT_AWESOME = _first_existing(_FONT_AWESOME_CANDIDATES)
+
+# Priority ikonlari (Font Awesome Solid glyph'leri), UI priority'ye gore
+# UI P1=en yuksek/acil, P4=varsayilan
+PRIORITY_ICONS = {
+    1: chr(0xF005),  # star — en yuksek (acil)
+    2: chr(0xF071),  # triangle-exclamation — yuksek
+    3: chr(0xF111),  # circle — orta
+    # 4: ikon yok (varsayilan)
+}
 
 
 def load_font(path, size):
@@ -94,8 +108,11 @@ def fetch_todoist_inbox():
     tasks = tdata.get("results", []) if isinstance(tdata, dict) else tdata
     inbox = [t for t in tasks
              if t.get("project_id") == inbox_id and not t.get("checked")]
-    titles = [t.get("content", "").strip() for t in inbox]
-    return (len(inbox), titles)
+    # Oncelige gore sirala: API priority 4=en yuksek (UI P1) once gelsin
+    inbox.sort(key=lambda t: -t.get("priority", 1))
+    # (baslik, ui_priority) dondur. API 4->UI 1, API 3->UI 2, API 2->UI 3, API 1->UI 4
+    items = [(t.get("content", "").strip(), 5 - t.get("priority", 1)) for t in inbox]
+    return (len(inbox), items)
 
 
 def generate_image(total, titles):
@@ -141,21 +158,27 @@ def generate_image(total, titles):
     margin = 26
     if titles:
         ny = 106
-        box = 30
-        for task in titles[:MAX_TASKS]:
-            by0 = ny
-            # Onay kutusu
-            draw.rectangle([(margin, by0), (margin + box, by0 + box)], outline=0, width=2)
+        row_h = 44
+        fa_icon = load_font(FONT_AWESOME, 26) if FONT_AWESOME else None
+        for item in titles[:MAX_TASKS]:
+            task, prio = item if isinstance(item, tuple) else (item, 4)
+            cy = ny + row_h // 2
+            # Priority ikonu (checkbox yok — app'ten isaretlenince listeden duser)
+            glyph = PRIORITY_ICONS.get(prio)
+            if glyph and fa_icon:
+                draw.text((margin, cy), glyph, fill=0, font=fa_icon, anchor="lm")
+            else:
+                draw.ellipse([(margin+6, cy-4), (margin+14, cy+4)], fill=0)
             # Gorev basligi — tek satira sigacak sekilde kirp
-            text_left = margin + box + 16
+            text_left = margin + 42
             avail = KINDLE_W - text_left - margin
             line = task
             while draw.textbbox((0, 0), line, font=fb_26)[2] > avail and len(line) > 4:
                 line = line[:-2]
             if line != task:
                 line = line.rstrip() + "…"
-            draw.text((text_left, by0 + box // 2), line, fill=0, font=fb_26, anchor="lm")
-            ny += box + 14
+            draw.text((text_left, cy), line, fill=0, font=fb_26, anchor="lm")
+            ny += row_h
             if ny > KINDLE_H - 30:
                 break
     elif total == 0:
@@ -166,9 +189,22 @@ def generate_image(total, titles):
                   fill=100, font=fb_28, anchor="mm")
 
     img_bw = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG).convert("L")
+    # Gece modu: weather_image.py'nin yazdigi night.flag'i oku
+    if _is_night():
+        from PIL import ImageOps
+        img_bw = ImageOps.invert(img_bw)
+        print("Night mode: inverted")
     img_bw.save(OUTPUT_PATH)
     print(f"Saved: {OUTPUT_PATH}")
     return OUTPUT_PATH
+
+
+def _is_night():
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "night.flag")) as f:
+            return f.read().strip() == "1"
+    except Exception:
+        return False
 
 
 def main():

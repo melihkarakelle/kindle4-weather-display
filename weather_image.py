@@ -48,6 +48,18 @@ _WEATHER_ICON_CANDIDATES = [
     os.path.join(os.path.dirname(__file__), "weathericons.ttf"),
     "/usr/share/fonts/truetype/weathericons.ttf",
 ]
+_FONT_AWESOME_CANDIDATES = [
+    os.path.join(os.path.dirname(__file__), "fa-solid.ttf"),
+    "/usr/share/fonts/truetype/fa-solid.ttf",
+]
+
+# Priority ikonlari (Font Awesome Solid), UI priority: P1=en yuksek
+# chr() ile yaziliyor cunku private-use unicode karakterler dosyada kaybolur
+PRIORITY_ICONS = {
+    1: chr(0xF005),  # star — en yuksek
+    2: chr(0xF071),  # triangle-exclamation — yuksek
+    3: chr(0xF111),  # circle — orta
+}
 
 def _first_existing(paths):
     for p in paths:
@@ -58,6 +70,7 @@ def _first_existing(paths):
 FONT_BOLD    = _first_existing(_FONT_BOLD_CANDIDATES)
 FONT_MEDIUM  = _first_existing(_FONT_MEDIUM_CANDIDATES)
 FONT_WEATHER = _first_existing(_WEATHER_ICON_CANDIDATES)
+FONT_AWESOME = _first_existing(_FONT_AWESOME_CANDIDATES)
 
 # Weather Icons Unicode glyphs (erikflowers/weather-icons)
 WI = {
@@ -203,8 +216,30 @@ def fetch_todoist_inbox():
     tasks = tdata.get("results", []) if isinstance(tdata, dict) else tdata
     inbox = [t for t in tasks
              if t.get("project_id") == inbox_id and not t.get("checked")]
-    titles = [t.get("content", "").strip() for t in inbox]
-    return (len(inbox), titles)
+    # Oncelige gore sirala: API priority 4=en yuksek (UI P1) once
+    inbox.sort(key=lambda t: -t.get("priority", 1))
+    # (baslik, ui_priority) — API 4->UI 1, ... API 1->UI 4
+    items = [(t.get("content", "").strip(), 5 - t.get("priority", 1)) for t in inbox]
+    return (len(inbox), items)
+
+
+def _parse_ampm(s):
+    """'04:45 AM' -> dakika (gece yarisindan). Hata -> None."""
+    try:
+        t = datetime.strptime(s.strip(), "%I:%M %p")
+        return t.hour * 60 + t.minute
+    except Exception:
+        return None
+
+
+def is_night(now, sunrise, sunset):
+    """now datetime; sunrise/sunset 'HH:MM AM/PM'. Gunes battiktan sonra / dogmadan once -> True."""
+    r = _parse_ampm(sunrise)
+    s = _parse_ampm(sunset)
+    if r is None or s is None:
+        return False
+    m = now.hour * 60 + now.minute
+    return m < r or m >= s
 
 
 def load_font(path, size):
@@ -420,22 +455,29 @@ def generate_image(data, tides=None, todoist=None):
 
     if titles:
         ny = TODO_TOP + 50
-        for idx, task in enumerate(titles[:8]):
-            # Onay kutusu (bos)
-            box = 26
-            by0 = ny
-            draw.rectangle([(margin, by0), (margin + box, by0 + box)], outline=0, width=2)
-            # Gorev basligi — bold, tek satira sigacak sekilde kirp
-            text_left = margin + box + 14
+        row_h = 34
+        fa_icon = load_font(FONT_AWESOME, 22) if FONT_AWESOME else None
+        for item in titles[:8]:
+            task, prio = item if isinstance(item, tuple) else (item, 4)
+            cy = ny + row_h // 2
+            # Priority ikonu (checkbox yok — app'ten isaretlenince listeden duser)
+            glyph = PRIORITY_ICONS.get(prio)
+            if glyph and fa_icon:
+                draw.text((margin, cy), glyph, fill=0, font=fa_icon, anchor="lm")
+            # Bullet nokta (ikonsuz gorevler icin)
+            else:
+                draw.ellipse([(margin+4, cy-3), (margin+10, cy+3)], fill=0)
+            # Gorev basligi
+            text_left = margin + 34
             avail = KINDLE_W - text_left - margin
             line = task
             while draw.textbbox((0, 0), line, font=fb_24)[2] > avail and len(line) > 4:
                 line = line[:-2]
             if line != task:
                 line = line.rstrip() + "…"
-            draw.text((text_left, by0 + box // 2), line, fill=0, font=fb_24, anchor="lm")
-            ny += box + 14
-            if ny > KINDLE_H - 24:
+            draw.text((text_left, cy), line, fill=0, font=fb_24, anchor="lm")
+            ny += row_h
+            if ny > KINDLE_H - 20:
                 break
     elif total == 0:
         draw.text((KINDLE_W//2, TODO_TOP + 90), "Inbox is empty",
@@ -445,6 +487,18 @@ def generate_image(data, tides=None, todoist=None):
                   fill=100, font=fm_20, anchor="mm")
 
     img_bw = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG).convert("L")
+    # Gece modu: gunes battiktan sonra ekrani negatif yap
+    night = is_night(now, sunrise, sunset)
+    # todoist_image.py de okusun diye flag dosyasi yaz
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "night.flag"), "w") as f:
+            f.write("1" if night else "0")
+    except Exception:
+        pass
+    if night:
+        from PIL import ImageOps
+        img_bw = ImageOps.invert(img_bw)
+        print("Night mode: inverted")
     img_bw.save(OUTPUT_PATH)
     print(f"Saved: {OUTPUT_PATH}")
     return OUTPUT_PATH
