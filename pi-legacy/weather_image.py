@@ -487,18 +487,6 @@ def generate_image(data, tides=None, todoist=None):
                   fill=100, font=fm_20, anchor="mm")
 
     img_bw = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG).convert("L")
-    # Gece modu: gunes battiktan sonra ekrani negatif yap
-    night = is_night(now, sunrise, sunset)
-    # todoist_image.py de okusun diye flag dosyasi yaz
-    try:
-        with open(os.path.join(os.path.dirname(__file__), "night.flag"), "w") as f:
-            f.write("1" if night else "0")
-    except Exception:
-        pass
-    if night:
-        from PIL import ImageOps
-        img_bw = ImageOps.invert(img_bw)
-        print("Night mode: inverted")
     img_bw.save(OUTPUT_PATH)
     print(f"Saved: {OUTPUT_PATH}")
     return OUTPUT_PATH

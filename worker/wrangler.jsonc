@@ -1,0 +1,15 @@
+{
+  "name": "kindle",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "rules": [{ "type": "Text", "globs": ["**/*.html", "**/*.sh"], "fallthrough": true }],
+
+  "d1_databases": [
+    { "binding": "DB", "database_name": "kindle", "database_id": "local-kindle", "migrations_dir": "migrations" }
+  ],
+
+  // Refresh weather / tides / Todoist every 10 minutes (UTC cron, fired by the Air Panel agent).
+  "triggers": { "crons": ["*/10 * * * *"] }
+
+  // Secret: TODOIST_TOKEN=... in .dev.vars (not committed)
+}

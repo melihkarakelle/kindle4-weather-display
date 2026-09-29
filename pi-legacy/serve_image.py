@@ -14,7 +14,10 @@ ROUTES = {
     "/weather.png": os.path.join(BASE, "kindle_weather.png"),
     "/news.png":    os.path.join(BASE, "kindle_news.png"),
     "/todoist.png": os.path.join(BASE, "kindle_todoist.png"),
+    # Uzaktan komut: buraya sh script birak, Kindle'lar her dongude cekip calistirir
+    "/cmd.sh":      os.path.join(BASE, "cmd.sh"),
 }
+CONTENT_TYPES = {"/cmd.sh": "text/plain"}
 BATT_FILE = os.path.join(BASE, "battery.txt")
 PORT = 8765
 
@@ -42,7 +45,8 @@ class Handler(BaseHTTPRequestHandler):
                 with open(path, "rb") as f:
                     data = f.read()
                 self.send_response(200)
-                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Type",
+                                 CONTENT_TYPES.get(route_path, "image/png"))
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)

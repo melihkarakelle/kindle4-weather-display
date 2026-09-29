@@ -6,8 +6,8 @@ CLAUDE.md
 jailbreak/
 
 # Personal/runtime versions of the Kindle scripts (copy from *.example and edit)
-kindle_daemon.sh
-kindle_watchdog.sh
+/kindle_daemon.sh
+/kindle_watchdog.sh
 
 # Generated images
 kindle_weather.png
@@ -27,9 +27,9 @@ __pycache__/
 .DS_Store
 
 # Old experiments (not part of the documented build)
-kindle_button.sh
-kindle_display.sh
-news_image.py
+/kindle_button.sh
+/kindle_display.sh
+/news_image.py
 
 # Runtime battery value written by serve_image.py
 battery.txt
@@ -38,3 +38,10 @@ battery_todoist.txt
 # Todoist API token — NEVER publish
 todoist_token.txt
 kindle_todoist.png
+
+# Worker: secrets, local state, and the font atlas + fonts (the atlas is built from
+# system fonts that may not be redistributable — run worker/tools/make_atlas.py)
+worker/.dev.vars
+worker/.wrangler/
+worker/src/atlas.json
+worker/assets/

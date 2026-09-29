@@ -189,22 +189,9 @@ def generate_image(total, titles):
                   fill=100, font=fb_28, anchor="mm")
 
     img_bw = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG).convert("L")
-    # Gece modu: weather_image.py'nin yazdigi night.flag'i oku
-    if _is_night():
-        from PIL import ImageOps
-        img_bw = ImageOps.invert(img_bw)
-        print("Night mode: inverted")
     img_bw.save(OUTPUT_PATH)
     print(f"Saved: {OUTPUT_PATH}")
     return OUTPUT_PATH
-
-
-def _is_night():
-    try:
-        with open(os.path.join(os.path.dirname(__file__), "night.flag")) as f:
-            return f.read().strip() == "1"
-    except Exception:
-        return False
 
 
 def main():

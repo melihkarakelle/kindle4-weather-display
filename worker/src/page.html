@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kindle</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📖</text></svg>">
+<style>
+  /* Palette: same tokens as apps/sera (Codex design direction) */
+  :root {
+    --bg: #F5F7F4; --surface: #FFFFFF; --surface-muted: #EAF0EB;
+    --text: #172B26; --text-muted: #53665E; --border: #CBD7CE;
+    --accent: #006B58; --ok: #217347; --warn: #936000; --bad: #B32D3C;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #101815; --surface: #19241F; --surface-muted: #23332B;
+    --text: #EDF4EE; --text-muted: #AABDB0; --border: #3A5042;
+    --accent: #70DDB5; --ok: #79D99B; --warn: #F2C465; --bad: #FF8F98;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101815; --surface: #19241F; --surface-muted: #23332B;
+      --text: #EDF4EE; --text-muted: #AABDB0; --border: #3A5042;
+      --accent: #70DDB5; --ok: #79D99B; --warn: #F2C465; --bad: #FF8F98;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 18px; }
+  header h1 { margin: 0; font-size: 24px; }
+  header .updated { color: var(--text-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  header .spacer { flex: 1; }
+  a.back, button.icon {
+    min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-size: 18px; text-decoration: none; cursor: pointer;
+  }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+  .muted { color: var(--text-muted); }
+  .num { font-variant-numeric: tabular-nums; }
+  .badge { font-size: 13px; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+  .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+
+  button.btn {
+    min-height: 44px; padding: 0 16px; border-radius: 10px; font: inherit; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--bg);
+  }
+  button.btn.ghost { background: var(--surface); color: var(--accent); }
+  button.btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .devices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .device { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: start; }
+  .screen {
+    background: #3a3a3a; padding: 14px 12px 22px; border-radius: 16px; /* Kindle bezel */
+  }
+  .screen { cursor: zoom-in; }
+  .screen img { display: block; width: 100%; aspect-ratio: 3 / 4; background: #fff; image-rendering: pixelated; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 15px; margin: 8px 0 12px; }
+  .facts dt { color: var(--text-muted); }
+  .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .batt { display: inline-block; width: 70px; height: 12px; border: 1px solid var(--text-muted); border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+  .batt i { display: block; height: 100%; background: var(--ok); }
+  .batt.low i { background: var(--bad); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .sources { display: grid; gap: 8px; margin-bottom: 12px; }
+  .source { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; }
+  .source b { min-width: 76px; }
+  .source .err { color: var(--bad); font-size: 13px; flex-basis: 100%; }
+
+  label { display: block; font-size: 14px; color: var(--text-muted); margin: 10px 0 4px; }
+  input, textarea, select {
+    width: 100%; min-height: 44px; padding: 8px 10px; border-radius: 10px; font: inherit;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  textarea { font-family: ui-monospace, Menlo, monospace; font-size: 13px; min-height: 120px; resize: vertical; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .msg { font-size: 14px; }
+  .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 500; }
+  .tablewrap { overflow-x: auto; }
+  /* Full-size preview on hover (tap on touch screens). pointer-events:none so it
+     never covers the thumbnail and cause mouseleave flicker. */
+  #zoom {
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+    pointer-events: none; opacity: 0; transition: opacity 0.12s;
+  }
+  #zoom.open { opacity: 1; }
+  #zoom div { background: #3a3a3a; padding: 22px 18px 34px; border-radius: 22px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+  #zoom img { display: block; height: min(800px, calc(100vh - 100px)); aspect-ratio: 3 / 4; background: #fff; }
+  pre.report { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--surface-muted); font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+  footer { margin-top: 18px; font-size: 13px; color: var(--text-muted); }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; }
+
+  @media (max-width: 1000px) { .devices, .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 520px) { .device { grid-template-columns: 1fr; } .screen { max-width: 260px; } .pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="back" href="../" aria-label="Air Panel'e dön">←</a>
+    <h1>📖 Kindle</h1>
+    <span class="updated" id="updated">yükleniyor…</span>
+    <span class="spacer"></span>
+    <button class="icon" id="theme" aria-label="Temayı değiştir">◐</button>
+  </header>
+
+  <section class="devices" id="devices"></section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>Veri kaynakları</h2>
+      <div class="sources" id="sources"></div>
+      <div class="row">
+        <button class="btn" id="refresh">Şimdi yenile</button>
+        <span class="msg" id="refresh-msg"></span>
+      </div>
+    </div>
+
+    <form class="card" id="settings">
+      <h2>Ayarlar</h2>
+      <label for="location_label">Konum (ekranda görünen)</label>
+      <input id="location_label" name="location_label">
+      <label for="location_query">wttr.in sorgusu</label>
+      <input id="location_query" name="location_query">
+      <label for="tide_label">Gelgit başlığı</label>
+      <input id="tide_label" name="tide_label">
+      <label for="tide_rss">Gelgit RSS adresi (boş = gizle)</label>
+      <input id="tide_rss" name="tide_rss" inputmode="url">
+      <div class="pair">
+        <div><label for="weather_tasks">Görev sayısı · Kindle 1</label><input id="weather_tasks" name="weather_tasks" inputmode="numeric"></div>
+        <div><label for="todoist_tasks">Görev sayısı · Kindle 2</label><input id="todoist_tasks" name="todoist_tasks" inputmode="numeric"></div>
+      </div>
+      <div class="row">
+        <button class="btn" type="submit">Kaydet</button>
+        <span class="msg" id="settings-msg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" style="margin-bottom:14px">
+    <h2>Uzaktan komut</h2>
+    <p class="muted" style="margin:0 0 10px;font-size:14px">
+      Kindle'lar çoğu zaman uykuda. Buraya yazılan betik, cihaz bir sonraki uyanışında
+      (en geç bir güncelleme aralığı içinde) <code>cmd.sh</code> olarak indirilip bir kez çalıştırılır;
+      içerik değişmedikçe tekrar çalışmaz.
+    </p>
+    <div class="pair">
+      <div>
+        <label for="cmd-dev">Cihaz</label>
+        <select id="cmd-dev"><option value="weather">Kindle 1 · Hava durumu</option><option value="todoist">Kindle 2 · Todoist</option></select>
+      </div>
+      <div>
+        <label for="cmd-template">Hazır komut</label>
+        <select id="cmd-template">
+          <option value="">— seç —</option>
+          <option value="interval">Güncelleme aralığını değiştir</option>
+          <option value="update">Daemon'u sunucudaki sürüme güncelle</option>
+          <option value="restart">Daemon'u yeniden başlat</option>
+          <option value="reboot">Kindle'ı yeniden başlat</option>
+          <option value="report">Durum raporu gönder</option>
+          <option value="clear">Komutu temizle</option>
+        </select>
+      </div>
+    </div>
+    <label for="cmd">Betik (<code>/bin/sh</code>)</label>
+    <textarea id="cmd" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="btn" id="cmd-save">Kaydet</button>
+      <span class="msg" id="cmd-msg"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Son indirmeler</h2>
+    <div class="tablewrap"><table><thead><tr><th>Zaman</th><th>Cihaz</th><th>Pil</th><th>IP</th></tr></thead><tbody id="log"></tbody></table></div>
+  </section>
+
+  <footer>Kindle adresleri: <code>weather.png?batt=NN</code> · <code>todoist.png?batt=NN</code> · <code>cmd.sh?dev=weather|todoist</code></footer>
+</main>
+<div id="zoom" aria-hidden="true"><div><img alt=""></div></div>
+
+<script>
+  const root = document.documentElement;
+  const saved = (() => { try { return localStorage.getItem("theme"); } catch { return null; } })();
+  if (saved) root.dataset.theme = saved;
+  document.getElementById("theme").onclick = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch {}
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = (ts) => ts ? new Date(ts * 1000).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+  const ago = (ts, now) => {
+    if (!ts) return "hiç";
+    const m = Math.round((now - ts) / 60);
+    return m < 1 ? "az önce" : m < 60 ? `${m} dk önce` : m < 1440 ? `${Math.round(m / 60)} sa önce` : `${Math.round(m / 1440)} gün önce`;
+  };
+  const NAMES = { weather: "Kindle 1 · Hava durumu", todoist: "Kindle 2 · Todoist" };
+  const IMG = { weather: "weather.png", todoist: "todoist.png" };
+  const SOURCE_NAMES = { weather: "Hava", tides: "Gelgit", todoist: "Todoist" };
+  // Kindles fetch every 30 min; after 45 min without a fetch something is wrong.
+  const DEVICE_STALE = 45 * 60, SOURCE_STALE = 25 * 60;
+  let state = null, previewStamp = Date.now();
+
+  function renderDevices(s) {
+    $("devices").innerHTML = s.devices.map((d) => {
+      const stale = !d.last_seen || s.now - d.last_seen > DEVICE_STALE;
+      const badge = !d.last_seen ? `<span class="badge warn">hiç bağlanmadı</span>`
+        : stale ? `<span class="badge bad">yanıt yok</span>` : `<span class="badge ok">çevrimiçi</span>`;
+      const batt = d.battery == null ? "—"
+        : `<span class="batt${d.battery < 20 ? " low" : ""}"><i style="width:${d.battery}%"></i></span>${d.battery}%`;
+      const cmd = !d.cmd ? "yok"
+        : d.cmd_fetched && d.cmd_fetched >= d.cmd_updated ? `alındı · ${ago(d.cmd_fetched, s.now)}` : "bekliyor";
+      return `<article class="card device">
+        <div class="screen"><img src="${IMG[d.id]}?t=${previewStamp}" alt="${NAMES[d.id]} ekran önizlemesi" loading="lazy"></div>
+        <div>
+          <h2>${NAMES[d.id]}</h2>
+          ${badge}
+          <dl class="facts">
+            <dt>Son bağlantı</dt><dd>${ago(d.last_seen, s.now)}</dd>
+            <dt>Pil</dt><dd>${batt}</dd>
+            <dt>IP</dt><dd>${esc(d.ip) || "—"}</dd>
+            <dt>Komut</dt><dd>${cmd}</dd>
+          </dl>
+          ${d.report ? `<p class="muted" style="font-size:13px;margin:0 0 10px">Rapor · ${ago(d.report_ts, s.now)}</p><pre class="report">${esc(d.report)}</pre>` : ""}
+          <button class="btn ghost" data-preview>Önizlemeyi yenile</button>
+        </div>
+      </article>`;
+    }).join("");
+    document.querySelectorAll("[data-preview]").forEach((b) => b.onclick = () => { previewStamp = Date.now(); renderDevices(state); });
+    document.querySelectorAll(".screen").forEach((el) => {
+      const img = el.querySelector("img");
+      el.onmouseenter = () => openZoom(img);
+      el.onmouseleave = closeZoom;
+      // Touch: no hover, so a tap toggles.
+      el.onclick = () => {
+        if (matchMedia("(hover: hover)").matches) return;
+        $("zoom").classList.contains("open") ? closeZoom() : openZoom(img);
+      };
+    });
+  }
+
+  function openZoom(img) {
+    $("zoom").querySelector("img").src = img.src;
+    $("zoom").querySelector("img").alt = img.alt;
+    $("zoom").classList.add("open");
+  }
+  function closeZoom() { $("zoom").classList.remove("open"); }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeZoom(); });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".screen")) closeZoom(); });
+
+  function renderSources(s) {
+    $("sources").innerHTML = ["weather", "tides", "todoist"].map((k) => {
+      const v = s.sources[k];
+      if (!v) return `<div class="source"><b>${SOURCE_NAMES[k]}</b><span class="badge warn">henüz yok</span></div>`;
+      const stale = s.now - v.ts > SOURCE_STALE;
+      const badge = v.error ? `<span class="badge bad">hata</span>` : stale ? `<span class="badge warn">eski</span>` : `<span class="badge ok">güncel</span>`;
+      const count = k === "weather" ? "" : ` · ${v.count} kayıt`;
+      return `<div class="source"><b>${SOURCE_NAMES[k]}</b>${badge}<span class="muted num">${ago(v.ts, s.now)}${count}</span>
+        ${v.error ? `<span class="err">${esc(v.error)}</span>` : ""}</div>`;
+    }).join("") + (s.todoistToken ? "" : `<div class="source"><span class="err">TODOIST_TOKEN .dev.vars içinde tanımlı değil</span></div>`);
+  }
+
+  function renderLog(s) {
+    $("log").innerHTML = s.log.length ? s.log.map((r) =>
+      `<tr><td>${fmt(r.ts)}</td><td>${NAMES[r.device] || esc(r.device)}</td><td>${r.battery ?? "—"}%</td><td>${esc(r.ip)}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="muted">Henüz Kindle bağlanmadı</td></tr>`;
+  }
+
+  function fillSettings(s) {
+    for (const [k, v] of Object.entries(s.settings)) {
+      const el = document.querySelector(`#settings [name="${k}"]`);
+      if (el && document.activeElement !== el) el.value = v;
+    }
+  }
+
+  function fillCmd() {
+    const d = state?.devices.find((x) => x.id === $("cmd-dev").value);
+    if (d && document.activeElement !== $("cmd")) $("cmd").value = d.cmd || "";
+  }
+
+  async function load(first = false) {
+    try {
+      state = await fetch("api/status", { cache: "no-store" }).then((r) => r.json());
+      $("updated").textContent = `güncellendi ${new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
+      renderDevices(state); renderSources(state); renderLog(state);
+      if (first) { fillSettings(state); fillCmd(); }
+    } catch (e) {
+      $("updated").textContent = "bağlantı hatası";
+    }
+  }
+
+  const say = (id, text, ok = true) => { const el = $(id); el.textContent = text; el.className = `msg ${ok ? "ok" : "bad"}`; };
+
+  async function post(path, body) {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  }
+
+  $("refresh").onclick = async (e) => {
+    e.target.disabled = true; say("refresh-msg", "yenileniyor…");
+    try {
+      const j = await post("api/refresh", {});
+      const bad = Object.entries(j.report).filter(([, v]) => v !== "ok");
+      say("refresh-msg", bad.length ? `${bad.length} kaynak hatalı` : "tamam", !bad.length);
+      previewStamp = Date.now(); await load();
+    } catch (err) { say("refresh-msg", err.message, false); }
+    e.target.disabled = false;
+  };
+
+  $("settings").onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button"); btn.disabled = true; say("settings-msg", "kaydediliyor…");
+    try {
+      await post("api/settings", Object.fromEntries(new FormData(e.target)));
+      say("settings-msg", "kaydedildi"); previewStamp = Date.now(); await load();
+    } catch (err) { say("settings-msg", err.message, false); }
+    btn.disabled = false;
+  };
+
+  const TEMPLATES = {
+    interval: `#!/bin/sh
+# Güncelleme aralığı (saniye). 1800 = 30 dk
+sed -i 's|^INTERVAL=.*|INTERVAL=1800|' /mnt/us/kindle_daemon.sh
+# Daemon'u durdur; watchdog bir dakika içinde yeni ayarla başlatır
+kill $(cat /tmp/kindle_daemon.pid) 2>/dev/null
+rm -f /tmp/kindle_daemon.pid
+`,
+    restart: `#!/bin/sh
+kill $(cat /tmp/kindle_daemon.pid) 2>/dev/null
+rm -f /tmp/kindle_daemon.pid
+`,
+    reboot: `#!/bin/sh
+sync
+/sbin/reboot
+`,
+    // Sends a status snapshot back; it shows up under the device card.
+    report: `#!/bin/sh
+OUT=$( {
+  echo "battery=$(/usr/bin/lipc-get-prop com.lab126.powerd battLevel 2>&1)"
+  echo "wifi=$(/usr/bin/lipc-get-prop com.lab126.wifid cmState 2>&1)"
+  echo "uptime=$(uptime)"
+  echo "daemon=$(grep '^INTERVAL=' /mnt/us/kindle_daemon.sh)"
+  tail -5 /mnt/us/kindle_display.log
+} )
+ENC=$(echo "$OUT" | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/&/%26/g' -e 's/+/%2B/g' -e 's/#/%23/g' -e 's/=/%3D/g' -e 's/?/%3F/g' | awk '{printf "%s%%0A",$0}')
+wget -q -O /dev/null "$SERVER/report?dev=$DEV&msg=$ENC"
+`,
+    clear: "",
+    // Pulls the daemon from this app and swaps it in; the watchdog restarts it.
+    // $SERVER and $DEV are set by the daemon when it runs the command.
+    update: `#!/bin/sh
+NEW=/mnt/us/kindle_daemon.new
+wget -q -O $NEW "$SERVER/daemon.sh?dev=$DEV" || exit 1
+grep -q kindle_daemon.pid $NEW || { rm -f $NEW; exit 1; }
+mv $NEW /mnt/us/kindle_daemon.sh
+chmod +x /mnt/us/kindle_daemon.sh
+kill $(cat /tmp/kindle_daemon.pid) 2>/dev/null
+rm -f /tmp/kindle_daemon.pid
+`,
+  };
+  $("cmd-dev").onchange = fillCmd;
+  $("cmd-template").onchange = (e) => {
+    const t = TEMPLATES[e.target.value];
+    if (t !== undefined) $("cmd").value = t;
+    e.target.value = "";
+  };
+  $("cmd-save").onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await post("api/cmd", { dev: $("cmd-dev").value, cmd: $("cmd").value });
+      say("cmd-msg", "kaydedildi — cihaz bir sonraki uyanışında çalıştıracak"); await load();
+    } catch (err) { say("cmd-msg", err.message, false); }
+    e.target.disabled = false;
+  };
+
+  load(true);
+  setInterval(load, 60000);
+</script>
+</body>
+</html>

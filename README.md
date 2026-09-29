@@ -1,50 +1,69 @@
-# Kindle 4 NT Weather & News Display
+# Kindle 4 NT Weather & Todoist Display
 
 Turn an old **Kindle 4 Non-Touch (firmware 4.1.4)** into a battery-friendly, WiFi-connected
-e-ink information display. A Raspberry Pi (or any always-on Linux box) generates a single
-600×800 black-and-white PNG containing the local weather, a 3-day forecast, tide times and
-your Todoist Inbox tasks. The Kindle wakes up on a timer, downloads the image, draws it on
-its e-ink screen, and goes back into deep sleep — so a single charge lasts a long time.
+e-ink information display. A small server renders a 600×800 black-and-white PNG with the local
+weather, a 3-day forecast, tide times and your Todoist Inbox. The Kindle wakes up on a timer,
+downloads the image, draws it on its e-ink screen and goes back into deep sleep — so a single
+charge lasts a long time. A second Kindle can show a full-screen Todoist list.
 
 ![Kindle weather display](docs/screenshot.png)
 
 *Weather, 3-day forecast, tide times and a configurable bottom panel on one 600×800 e-ink
-screen, with a battery indicator in the top-right corner. (The screenshot shows an RSS news
-panel; the current code ships with a Todoist Inbox panel instead — see below.)*
+screen, with a battery indicator in the top-right corner. (The screenshot shows an older RSS
+news panel; the current code shows your Todoist Inbox there.)*
 
 ## How it works
 
 ```
-┌──────────────┐   HTTP :8765    ┌─────────────────────────────┐
-│ Raspberry Pi │ ───────────────▶│ Kindle 4 NT (jailbroken)    │
-│              │   weather.png   │                             │
-│ weather_image│                 │ kindle_daemon.sh:           │
-│   .py (cron) │                 │  • WiFi on → wget image     │
-│              │                 │  • eips -f -g  (draw)       │
-│ serve_image  │                 │  • WiFi off                 │
-│   .py (HTTP) │                 │  • RTC alarm + suspend      │
-└──────────────┘                 │  • wake after N minutes     │
-                                 └─────────────────────────────┘
+┌────────────────────────────┐   HTTP (LAN)    ┌─────────────────────────────┐
+│ Server: Cloudflare Worker  │ ───────────────▶│ Kindle 4 NT (jailbroken)    │
+│ (wrangler dev on a home    │  weather.png    │                             │
+│  server, see worker/)      │  todoist.png    │ kindle_daemon.sh:           │
+│                            │  cmd.sh         │  • WiFi on → wget image     │
+│ • cron: fetch weather,     │  daemon.sh      │  • run remote command       │
+│   tides, Todoist → D1      │                 │  • eips -f -g  (draw)       │
+│ • draws the PNG itself     │ ◀───────────────│  • WiFi off                 │
+│ • admin page               │   ?batt=NN      │  • RTC alarm + suspend      │
+└────────────────────────────┘                 └─────────────────────────────┘
 ```
 
-1. **The Pi** runs a small script (`weather_image.py`) on a cron schedule that fetches data
-   from public APIs and renders one PNG. A tiny HTTP server (`serve_image.py`) serves it.
-2. **The Kindle** runs a daemon that, on a timer, briefly turns on WiFi, downloads the PNG
-   (passing its current battery level), draws it with `eips`, turns WiFi off, sets an RTC
-   wake alarm, and enters deep sleep (`echo mem > /sys/power/state`). A cron "watchdog"
-   restarts the daemon on boot or if it dies.
+1. **The server** is a Cloudflare Worker (`worker/`). A cron job caches weather
+   ([wttr.in](https://wttr.in)), tides and Todoist in D1. When a Kindle asks for its image the
+   Worker draws it on the spot — a tiny pure-JavaScript PNG encoder plus a pre-rendered bitmap
+   font atlas, no native image library — and serves an admin page with live previews.
+2. **The Kindle** runs a daemon that, on a timer, briefly turns on WiFi, downloads its PNG
+   (passing its battery level), runs any pending remote command, draws the image with `eips`,
+   turns WiFi off, sets an RTC wake alarm and enters deep sleep
+   (`echo mem > /sys/power/state`). A cron "watchdog" restarts the daemon on boot or if it dies.
 
 The e-ink screen keeps showing the last image while the device sleeps, so the display is
 always populated even though the CPU is off most of the time.
 
+> **Plain HTTP on the LAN is required.** The Kindle's BusyBox `wget` cannot do HTTPS, so run
+> the Worker locally with `wrangler dev` (or behind any LAN reverse proxy), not only on
+> Cloudflare's public edge.
+
+> The first version of this project rendered the image with Python/Pillow on a Raspberry Pi.
+> Those scripts are kept in [`pi-legacy/`](pi-legacy/) for reference.
+
 ### Battery indicator
 
-The image is rendered on the Pi, which can't know the Kindle's battery level. So each time
-the daemon fetches the image it reads its own battery (`lipc-get-prop com.lab126.powerd
-battLevel`) and appends it to the request: `GET /weather.png?batt=85`. The server saves that
-value to `battery.txt`, and the next render draws a small battery icon (with a fill bar) and
-the percentage in the top-right corner. This way the level shown is always the Kindle's real
-charge, drawn with a proper font (the on-device `eips` text mode can't even render a `%`).
+The server can't know a Kindle's battery level, so each time the daemon fetches its image it
+reads the battery (`lipc-get-prop com.lab126.powerd battLevel`) and appends it to the request:
+`GET weather.png?batt=85`. The server stores it per device, draws a battery icon with the
+percentage in the corner, and shows it on the admin page (the on-device `eips` text mode
+can't even render a `%`). If it always reads 0, check the admin page's status report: a fully
+drained battery reports 0 everywhere (and resets the clock) until it has charged a while.
+
+### Remote commands
+
+The Kindles sleep almost all the time, so SSH is rarely reachable. Instead, the admin page has
+a script box per device. The daemon fetches `cmd.sh?dev=<id>` on every wake and runs it once
+when its content changes. Commands get `$SERVER` and `$DEV` in their environment. Built-in
+templates: update the daemon from the server (`daemon.sh?dev=<id>`), change the interval,
+restart, reboot, and **send a status report** — a command can report back with
+`wget -q -O /dev/null "$SERVER/report?dev=$DEV&msg=..."` (BusyBox `wget` cannot POST) and the
+text appears under the device card.
 
 ---
 
@@ -125,7 +144,16 @@ ssh root@192.168.15.244     # the Kindle's USB-net IP
 The default root password is derived from the device serial number. Use the community
 calculator at **https://www.sven.de/kindle/** (paste your serial, it returns the
 password). Typical results look like `fiona____`. The serial is on the back of the device
-and under *Settings → Device Info*.
+and under *Settings → Device Info*. The calculator lists several candidates; the one that
+worked on our devices is `fiona` + characters 8–10 of the serial's MD5:
+
+```bash
+printf '%s\n' YOUR_SERIAL | md5 | cut -c 8-10     # Linux: md5sum
+```
+
+> **USB vs WiFi:** over USB networking the SSH server does not check the password at all,
+> so any password seems to "work". Over WiFi (`K3_WIFI="true"`) it is checked — a wrong
+> password only shows up there. Each Kindle has its own password.
 
 ### SSH over WiFi (recommended once configured)
 
@@ -174,153 +202,98 @@ This is BusyBox-based and minimal. Things that bite you:
 
 ---
 
-## Part 4 — Set up the image server (Raspberry Pi)
+## Part 4 — Set up the server (Cloudflare Worker)
 
-Any always-on Linux machine works. You need Python 3 and Pillow.
-
-```bash
-sudo apt update
-sudo apt install -y python3-pip fonts-freefont-ttf
-pip3 install pillow requests
-```
-
-Create a project directory and copy these files into it:
-
-```
-weather_image.py     # fetches data, renders kindle_weather.png
-serve_image.py       # HTTP server on :8765 serving /weather.png
-weathericons.ttf     # icon font (erikflowers/weather-icons)
-```
-
-### Configure your location and data sources
-
-Edit the `CONFIG` block at the top of `weather_image.py`:
-
-```python
-LOCATION_QUERY = "YourTown,YourRegion,Country"   # used for wttr.in
-LOCATION_LABEL = "Your Town, Country"            # printed on screen
-
-TIDE_RSS   = "https://www.tidetimes.co.uk/rss/your-port-tide-times"  # "" to disable
-TIDE_LABEL = "Your Port — Tide Times"
-
-# Todoist token is read from todoist_token.txt (see below), not set here.
-```
-
-The bottom panel shows your **Todoist Inbox** — the number of pending tasks and the first
-few of them. To enable it, get an API token from **Todoist → Settings → Integrations →
-Developer**, and save it to a file next to the script:
+The server lives in [`worker/`](worker/). It needs Node.js, `wrangler` and — once, to build the
+font atlas — Python 3 with Pillow. It can run on any always-on machine on your network.
 
 ```bash
-echo "YOUR_TODOIST_API_TOKEN" > todoist_token.txt
-chmod 600 todoist_token.txt      # git-ignored; never commit this
+cd worker
+npm install -g wrangler        # or use npx wrangler
+pip3 install pillow
 ```
 
-If the file is absent, the panel simply shows nothing.
+### Build the font atlas
 
-Data sources used (all free):
-- **Weather:** [wttr.in](https://wttr.in) JSON (`https://wttr.in/<location>?format=j1`), no key.
-- **Tides:** a tidetimes.co.uk RSS feed (parses the second `<description>` block and
-  HTML-unescapes it). Use your nearest port's feed, or set `TIDE_RSS = ""` to hide it.
-- **Tasks:** [Todoist API v1](https://developer.todoist.com/) (`/api/v1/tasks`), Bearer token.
-
-### Get the weather icon font
+Workers cannot rasterise TrueType fonts, so every glyph the screens need is pre-rendered into
+`src/atlas.json` by `tools/make_atlas.py`. Put the two icon fonts in `worker/assets/`:
 
 ```bash
-curl -L -o weathericons.ttf \
+mkdir -p assets
+curl -L -o assets/weathericons.ttf \
   https://github.com/erikflowers/weather-icons/raw/master/font/weathericons-regular-webfont.ttf
+curl -L -o assets/fa-solid.ttf \
+  https://github.com/FortAwesome/Font-Awesome/raw/6.x/webfonts/fa-solid-900.ttf
+python3 tools/make_atlas.py     # uses Arial on macOS or FreeSans on Linux (apt install fonts-freefont-ttf)
 ```
 
-The renderer maps weather codes to glyphs in this font, so icons look crisp on e-ink.
+The atlas and fonts are not committed (the text font is a system font). Re-run the script
+whenever you change fonts, sizes or add characters (e.g. another language).
 
-### Test the renderer
+### Configure and run
 
 ```bash
-python3 weather_image.py
-# → writes kindle_weather.png  (open it to check the layout)
+echo "TODOIST_TOKEN=your_todoist_api_token" > .dev.vars      # Todoist → Settings → Integrations → Developer
+npx wrangler d1 migrations apply kindle --local
+npx wrangler dev --ip 0.0.0.0 --port 8787
 ```
 
-### Run the HTTP server as a service
+Open `http://<server-ip>:8787/` for the admin page. Location, tide feed and task counts are
+edited there (they are seeded in `migrations/0001_init.sql`). Data sources, all free:
+[wttr.in](https://wttr.in) (weather, no key), a tidetimes.co.uk RSS feed (leave empty to hide
+tides) and the [Todoist API v1](https://developer.todoist.com/).
 
-`serve_image.py` serves `kindle_weather.png` at `http://<pi>:8765/weather.png`
-(and logs each request to `access.log`, handy for debugging the Kindle).
+The `*/10` cron in `wrangler.jsonc` refreshes the cache. Plain `wrangler dev` does not fire
+crons by itself; either run it with `--test-scheduled` and call
+`curl "http://localhost:8787/__scheduled?cron=*/10+*+*+*+*"` from the host's crontab, or rely on
+the built-in fallback — a screen request refreshes data that is older than 30 minutes.
 
-Create `/etc/systemd/system/kindle-server.service`:
+> **The admin page has no login.** Keep the server on your LAN (or behind something like
+> Cloudflare Access). The Kindle endpoints must stay reachable over plain HTTP on the LAN.
 
-```ini
-[Unit]
-Description=Kindle image HTTP server
-After=network.target
+Endpoints:
 
-[Service]
-ExecStart=/usr/bin/python3 /home/USER/kindle_display/serve_image.py
-Restart=always
-User=USER
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable --now kindle-server
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8765/weather.png   # → 200
-```
-
-### Regenerate the image on a schedule
-
-Add to the Pi's crontab (`crontab -e`) — every 10 minutes:
-
-```cron
-*/10 * * * * cd /home/USER/kindle_display && python3 weather_image.py >> render.log 2>&1
-```
-
-> The image is regenerated more often than the Kindle fetches it — that's fine, the Kindle
-> always gets the latest one.
+| Path | Used by | Purpose |
+|------|---------|---------|
+| `/` | you | admin page: previews, battery, last contact, settings, remote commands |
+| `weather.png?batt=NN` | Kindle 1 | weather + forecast + tides + Todoist |
+| `todoist.png?batt=NN` | Kindle 2 | full-screen Todoist Inbox |
+| `daemon.sh?dev=<id>` | Kindle | the daemon, with the server address filled in |
+| `cmd.sh?dev=<id>` | Kindle | pending remote command |
+| `report?dev=<id>&msg=…` | Kindle | report text from a remote command |
 
 ---
 
 ## Part 5 — Install the Kindle daemon
 
-The repo ships `*.example` templates. Copy them, fill in your values, and push them
-to `/mnt/us/` on the Kindle:
-
-```bash
-cp kindle_daemon.sh.example   kindle_daemon.sh
-cp kindle_watchdog.sh.example kindle_watchdog.sh
-# edit kindle_daemon.sh (see below), then copy both to the Kindle's /mnt/us/
-```
-
-| File | Purpose |
-|------|---------|
-| `kindle_daemon.sh` | the main loop: download → draw → sleep → wake |
-| `kindle_watchdog.sh` | restarts the daemon on boot / if it crashes |
-
-### Configure the daemon
-
-Edit the CONFIG block at the top of `kindle_daemon.sh`:
+The daemon is served by the server, already configured for the address you fetch it from.
+On the Kindle (over SSH), with `SERVER` set to your server:
 
 ```sh
-PI_IP="192.168.X.X"      # your image server's IP
-PI_PORT="8765"
-INTERVAL=1800            # seconds between updates (1800 = 30 min)
-WIFI_WAIT=8              # seconds to wait after enabling WiFi
+SERVER=http://192.168.X.X:8787
+wget -q -O /mnt/us/kindle_daemon.sh "$SERVER/daemon.sh?dev=weather"   # dev=todoist for a Todoist screen
+chmod +x /mnt/us/kindle_daemon.sh
 ```
 
-What the daemon does each cycle:
-1. Turn WiFi on, wait, read the battery level, `wget` the PNG with `?batt=NN`.
-2. `eips -c` (clear) → `sleep 2` → `eips -f -g` (full draw) → `sleep 5` (let e-ink settle).
-3. Turn WiFi off.
-4. Set RTC alarm for `INTERVAL` seconds, then `echo mem > /sys/power/state` (deep sleep).
-5. On wake, repeat.
+Copy `kindle_watchdog.sh.example` from this repo to `/mnt/us/kindle_watchdog.sh`.
 
-It also keeps a **single-instance lock** (`/tmp/kindle_daemon.pid`) so the watchdog never
-starts a second copy. Because the device sleeps most of the time, the practical way to make
-changes is to **reboot** and grab the short window after boot (before the daemon's first
-suspend) to SSH in.
+What the daemon does each cycle:
+1. Turn WiFi on, wait, read the battery level, `wget` its PNG with `?batt=NN`.
+2. Fetch `cmd.sh` and run it once if it changed (with `$SERVER` and `$DEV` set).
+3. `eips -c` (clear) → `sleep 2` → `eips -f -g` (full draw) → `sleep 5` (let e-ink settle).
+4. Turn WiFi off.
+5. Set an RTC alarm for `INTERVAL` seconds (default 1800 = 30 min), then
+   `echo mem > /sys/power/state` (deep sleep).
+6. On wake, repeat.
+
+If the server is unreachable, `wget` gives up after 25 s, the last image stays on screen and
+the daemon tries again next cycle. A single-instance lock (`/tmp/kindle_daemon.pid`) stops the
+watchdog from starting a second copy.
 
 ### Install the watchdog in cron
 
 Because cron is paused during suspend, the watchdog's job is to (re)start the daemon on
-**boot** and after any **crash**. Make the root FS writable and edit the crontab:
+**boot** and after a **crash**. Make the root FS writable and edit the crontab:
 
 ```sh
 mount -o remount,rw /
@@ -329,18 +302,16 @@ mount -o remount,rw /
 sync
 ```
 
-`kindle_watchdog.sh` checks the PID file every minute and starts
-`kindle_daemon.sh` if it isn't running.
-
 ### Start it the first time
 
 ```sh
-chmod +x /mnt/us/kindle_daemon.sh /mnt/us/kindle_watchdog.sh
+chmod +x /mnt/us/kindle_watchdog.sh
 /bin/sh /mnt/us/kindle_watchdog.sh        # starts the daemon now
 tail -f /mnt/us/kindle_display.log        # watch it work
 ```
 
-You should see the weather image appear within a few seconds.
+The image should appear within a few seconds, and the device shows up as online on the admin
+page. From then on, change things through the admin page's remote commands instead of SSH.
 
 ---
 
@@ -348,29 +319,24 @@ You should see the weather image appear within a few seconds.
 
 | File | Where | Purpose |
 |------|-------|---------|
-| `weather_image.py` | Pi | Fetch weather/tide/Todoist, render `kindle_weather.png` |
-| `todoist_image.py` | Pi | Render the full Todoist Inbox to `kindle_todoist.png` (see below) |
-| `serve_image.py` | Pi | HTTP server on `:8765`, serves the PNGs, logs access |
-| `weathericons.ttf` | Pi | Weather glyph font (erikflowers/weather-icons) |
-| `kindle_daemon.sh` | Kindle `/mnt/us/` | Main download → draw → suspend loop |
-| `kindle_watchdog.sh` | Kindle `/mnt/us/` | Cron-driven boot/crash restart |
+| `worker/src/index.js` | server | routes, cron refresh, admin API |
+| `worker/src/layouts.js` | server | the two screen layouts |
+| `worker/src/canvas.js`, `png.js` | server | drawing primitives and PNG encoder |
+| `worker/src/sources.js` | server | wttr.in, tide RSS and Todoist fetchers |
+| `worker/src/kindle_daemon.sh` | server → Kindle | daemon template served at `daemon.sh` |
+| `worker/src/page.html` | server | admin page |
+| `worker/tools/make_atlas.py` | build | renders the font atlas |
+| `kindle_watchdog.sh.example` | Kindle `/mnt/us/` | cron-driven boot/crash restart |
+| `pi-legacy/` | — | the original Raspberry Pi + Pillow version |
 
-Logs on the Kindle: `/mnt/us/kindle_display.log` (events),
-`/mnt/us/daemon_debug.log` (stdout/stderr).
+Logs on the Kindle: `/mnt/us/kindle_display.log` (events), `/mnt/us/daemon_debug.log`
+(stdout/stderr, including remote command output).
 
 ### Second screen: a Todoist-only display
 
-You can drive a **second Kindle** that shows just your Todoist Inbox, full-screen.
-`todoist_image.py` renders `kindle_todoist.png` (served at `/todoist.png`), with the
-render time in the top-left and the device's battery in the top-right. Set it up like the
-main screen, with two changes:
-
-- On the Pi, also run `todoist_image.py` from cron and let `serve_image.py` serve
-  `/todoist.png` (it already routes `?batt=` for this endpoint to its own battery file).
-- On the second Kindle, use the same `kindle_daemon.sh` but point `IMG_URL` at
-  `/todoist.png` instead of `/weather.png`.
-
-Both Kindles share one Pi and one `todoist_token.txt`; each keeps its own battery value.
+A second Kindle can show just your Todoist Inbox, full-screen: install the daemon with
+`daemon.sh?dev=todoist`. It shows the render time top-left and its battery top-right. Tasks are
+sorted by priority; P1–P3 get a star, warning or dot icon (Font Awesome), others a bullet.
 
 ---
 
@@ -389,20 +355,28 @@ A backgrounded script gets SIGHUP when its launcher exits. Ensure the first line
 the shebang is `trap '' HUP`.
 
 **Can't SSH in — device "disappears."**
-It's asleep most of the time by design. SSH only works during a wake window. Either wait
-for the next cycle, **reboot and grab the short window after boot** (before the first
-suspend), or wake it from the device (power button, then exit the menu). Remember to test
-port 22, not ping.
+It's asleep most of the time by design. Use the admin page's **remote commands** instead
+(including the status report). If you really need a shell: reboot and grab the short window
+after boot, or wake it from the device (power button, then exit the menu). Test port 22, not
+ping — ICMP is blocked. As a last resort, plug it in over USB: in USB storage mode you can edit
+`/Volumes/Kindle/kindle_daemon.sh` directly, no password needed.
+
+**SSH over WiFi stopped working after a reboot.**
+Check `/mnt/us/usbnet/`: if the file is named `DISABLED_auto`, rename it to `auto` and set
+`K3_WIFI="true"` in `/mnt/us/usbnet/etc/config`, otherwise sshd isn't started at boot.
 
 **`wget: Network unreachable`.**
 WiFi wasn't ready. Keep the `sleep 8` after enabling WiFi. Also confirm the Kindle and the
-Pi are on the same network and the server returns `200` for `/weather.png`.
+server are on the same network (a second router or SSID often means a different subnet) and
+that `curl http://<server>/weather.png` returns `200`.
 
 **Verify the Kindle is actually fetching.**
-On the Pi, check the request log:
-```bash
-grep <kindle-ip> ~/kindle_display/access.log | tail
-```
+The admin page shows each device's last contact, battery and IP, plus a log of recent
+fetches. A device that hasn't fetched for 45 minutes is flagged.
+
+**Battery always shows 0 %.**
+Send the "status report" remote command. If `lipc-get-prop` and the gas gauge both say 0 and
+the Kindle's clock is wrong, the battery was fully drained — leave it on the charger.
 
 ---
 
@@ -423,6 +397,8 @@ grep <kindle-ip> ~/kindle_display/access.log | tail
 - **Root password calculator** — [sven.de/kindle](https://www.sven.de/kindle/)
 - **Weather data** — [wttr.in](https://github.com/chubin/wttr.in)
 - **Weather icons** — [erikflowers/weather-icons](https://github.com/erikflowers/weather-icons)
+- **Priority icons** — [Font Awesome Free](https://fontawesome.com) (solid)
+- **Tasks** — [Todoist API](https://developer.todoist.com/)
 
 ## License
 
